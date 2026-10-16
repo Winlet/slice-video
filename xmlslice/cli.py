@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 
 from xmlslice.danmaku import extract_timestamps
-from xmlslice.density import find_dense_periods
+from xmlslice.density import UNIT_SECONDS, find_auto_periods, find_dense_periods, find_ranked_auto_periods
 from xmlslice.ffmpeg import slice_video
 
 
@@ -30,7 +30,20 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=1,
         dest="top_n",
-        help="切出几段，默认 1",
+        help="切出几段。普通模式，以及自动模式未设置 -m 时，按密度取前几段，默认 1",
+    )
+    parser.add_argument(
+        "-m",
+        "--min-count",
+        type=int,
+        default=None,
+        dest="min_count",
+        help=f"至少多少条弹幕才切片。普通模式按 -d 秒计算；自动模式按每 {UNIT_SECONDS:g} 秒计算。不填时普通模式为 1，自动模式按密度自动选择",
+    )
+    parser.add_argument(
+        "--auto",
+        action="store_true",
+        help=f"自动切片，按每 {UNIT_SECONDS:g} 秒统计弹幕。设置 -m 时达到该数量才收录；不设置 -m 时按每秒弹幕数选出 -n 段",
     )
     parser.add_argument(
         "--overlap",
@@ -69,12 +82,35 @@ def output_name(video_path: str, start: float, taken: set[str]) -> str:
         index += 1
 
 
-def run(xml_path: str, video_path: str, duration: float, top_n: int, overlap: float, step: float, output_dir: str | None) -> list[str]:
+def run(
+    xml_path: str,
+    video_path: str,
+    duration: float,
+    top_n: int,
+    overlap: float,
+    step: float,
+    output_dir: str | None,
+    min_count: int | None = None,
+    auto: bool = False,
+) -> list[str]:
     timestamps = extract_timestamps(xml_path)
     if not timestamps:
         raise ValueError("XML 里没有可用的弹幕时间")
 
-    periods = find_dense_periods(timestamps, duration, top_n, overlap, step)
+    ranked = auto and min_count is None
+    if ranked:
+        spans = find_ranked_auto_periods(timestamps, top_n)
+        periods = [(start, end - start, count) for start, end, count in spans]
+    elif auto:
+        spans = find_auto_periods(timestamps, min_count)
+        periods = [(start, end - start, count) for start, end, count in spans]
+    else:
+        periods = [
+            (start, duration, count)
+            for start, count in find_dense_periods(
+                timestamps, duration, top_n, overlap, step, 1 if min_count is None else min_count
+            )
+        ]
     if not periods:
         raise ValueError("没有找到可切片的时间段")
 
@@ -83,11 +119,16 @@ def run(xml_path: str, video_path: str, duration: float, top_n: int, overlap: fl
     taken: set[str] = set()
     written: list[str] = []
     print(f"共读取 {len(timestamps)} 条弹幕，准备切 {len(periods)} 段。")
-    for start, count in periods:
+    for start, length, count in periods:
         name = output_name(video_path, start, taken)
         target = folder / name
-        print(f"从 {start:.3f}s 起，{duration:g} 秒，弹幕 {count} 条 -> {target}")
-        slice_video(video_path, str(target), start, duration)
+        if ranked:
+            rate = count / length if length else 0
+            detail = f"弹幕 {count} 条，每秒 {rate:.2f} 条"
+        else:
+            detail = f"弹幕 {count} 条"
+        print(f"从 {start:.3f}s 起，{length:g} 秒，{detail} -> {target}")
+        slice_video(video_path, str(target), start, length)
         written.append(str(target))
     return written
 
@@ -103,6 +144,8 @@ def main(argv: list[str] | None = None) -> int:
             args.overlap,
             args.step,
             args.output,
+            args.min_count,
+            args.auto,
         )
     except (FileNotFoundError, ValueError, RuntimeError) as exc:
         print(f"错误: {exc}")

@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "xmlslice"
+version = "0.1.0"
+description = "Slice MP4 highlights from XML danmaku density."
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{ name = "xmlslice" }]
+
+[project.scripts]
+xmlslice = "xmlslice.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["xmlslice"]

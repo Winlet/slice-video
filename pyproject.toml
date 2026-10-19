@@ -12,6 +12,7 @@ authors = [{ name = "xmlslice" }]
 
 [project.scripts]
 xmlslice = "xmlslice.cli:main"
+xmlslice-webhook = "xmlslice.webhook:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["xmlslice"]

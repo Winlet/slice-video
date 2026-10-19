@@ -67,6 +67,41 @@ python3 -m xmlslice -x "弹幕.xml" -v "录像.mp4" --auto -n 3
 
 输出文件名形如 `123s_原视频名.mp4`，`123` 是片段在原视频中的起始秒数。切片使用 ffmpeg 流复制，不重新编码，起点会对齐到前一个关键帧，所以实际开头可能比计算时间略早。
 
+## Webhook
+
+使用 [biliLive-tools 自定义 Webhook](https://docs.irenmu.com/features/webhook.html)。只有 `event` 为 `FileClosed` 时切片；`danmuPath` 为空则使用同名 `.xml`。`FileOpening` 和 `FileError` 只返回成功。
+
+```bash
+python3 -m xmlslice.webhook
+```
+
+| 项目 | 值 |
+|---|---|
+| 地址 | `http://127.0.0.1:18010/webhook/custom` |
+| 方法 | POST |
+| Content-Type | `application/json` |
+
+```json
+{
+  "event": "FileClosed",
+  "filePath": "/绝对路径/录像.mp4",
+  "coverPath": "",
+  "danmuPath": "",
+  "roomId": 93589,
+  "time": "2021-05-14T17:52:54.946",
+  "title": "直播标题",
+  "username": "主播名",
+  "platform": "custom",
+  "software": "custom"
+}
+```
+
+`event`、`filePath`、`roomId`、`time`、`title`、`username` 必填。`roomId` 是数字，不要加引号。
+
+录播软件如果改发 `{id, version, time, type, data}`，`type` 为文件结束（`FileClosed`、`video_transmux_finish`、`VideoFileCompletedEvent` 等），且 `data` 里有 `filePath`、`output` 或 `path`，同样会切片。开始录制的事件只返回成功。
+
+biliLive-tools 如果占用了 `18010`，先退出它再启动本程序。
+
 ## 测试
 
 ```bash
